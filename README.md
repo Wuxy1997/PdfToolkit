@@ -1,7 +1,9 @@
+[English](README.en.md)
+
 # PDF工具箱
 
 Windows 上的 PDF 编辑小工具：拆分、合并、页面整理、加字改字、批注、签名、水印、加密、压缩。
-绿色免安装，所有处理都在本机完成，文件不会上传。
+绿色免安装，所有处理都在本机完成，文件不会上传。界面有中文和英文，在“设置”里切换。
 
 ![icon](assets/app.png)
 
@@ -22,6 +24,12 @@ Windows 上的 PDF 编辑小工具：拆分、合并、页面整理、加字改�
 | **签名** | 手写（笔锋粗细随速度变化）、从照片/扫描件导入并自动去掉纸张背景、输入姓名生成；可保存多个，放到页面后可拖动缩放 |
 | **其他** | 水印（可平铺）、页码、密码保护（AES-256，可限制打印/复制/修改）、压缩、导出图片、导出文字、打印、撤销/重做 |
 
+## 界面语言
+
+第一次打开时跟随 Windows 的语言。点右上角的 **设置**，在“中文 / English”之间选择，整个界面立即切换，
+正在编辑的文档和撤销记录都会保留。程序自己生成的文件名（如拆分出的 `xx_第1-3页.pdf` / `xx_p1-3.pdf`）也跟随语言。
+只想临时换一次语言，可以用 `PDF工具箱.exe --lang en`（或 `zh`）启动。
+
 ## 从源码运行
 
 ```
@@ -33,12 +41,15 @@ python -m venv .venv
 测试与打包：
 
 ```
+.venv\Scripts\python tests\t_i18n.py                # 界面上的每句话都有中英文
 .venv\Scripts\python tests\t_core.py <临时目录>
 .venv\Scripts\python tests\t_gui.py  <临时目录>     # 会在临时目录里留下界面截图
+.venv\Scripts\python tests\t_lang.py <临时目录>     # 英文界面和语言切换，同样留下截图
 .venv\Scripts\python build.py                       # dist\PDF工具箱.exe 和绿色版 zip
 ```
 
-结构：`core/` 是不依赖界面的 PDF 操作（`pdfops.py`）和带撤销的文档模型（`docmodel.py`），`ui/` 是 PySide6 界面。
+结构：`core/` 是不依赖界面的 PDF 操作（`pdfops.py`）、带撤销的文档模型（`docmodel.py`）和两种语言的文字（`i18n.py`：
+代码里写中文，`EN` 表里是对应的英文），`ui/` 是 PySide6 界面。新增界面文字时用 `tr("中文")` 并在 `EN` 里补上英文。
 
 ## 已知限制
 

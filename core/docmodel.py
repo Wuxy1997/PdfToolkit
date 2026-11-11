@@ -5,6 +5,7 @@ import os
 import pymupdf
 
 from . import pdfops
+from .i18n import tr
 
 MAX_STEPS = 40
 MAX_BYTES = 600 * 1024 * 1024
@@ -44,7 +45,7 @@ class Doc:
         if self.path:
             return os.path.basename(self.path)
         s = getattr(self, "suggest", None)
-        return os.path.basename(s) if s else "未命名.pdf"
+        return os.path.basename(s) if s else tr("未命名.pdf")
 
     @property
     def n(self):

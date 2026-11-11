@@ -43,15 +43,36 @@ a.binaries = [e for e in a.binaries if keep(e)]
 a.datas = [e for e in a.datas if keep(e)]
 pyz = PYZ(a.pure)
 exe = EXE(pyz, a.scripts, a.binaries, a.datas, [], name={name!r}, console=False, icon={ico!r},
-          upx=False, runtime_tmpdir=None)
+          upx=False, runtime_tmpdir=None, version={ver_file!r})
 """
 
-README = f"""{APP_NAME} {VERSION}（绿色版）
+# What Explorer shows under Properties > Details; App Hub reads the installed version from here.
+VERSION_INFO = """VSVersionInfo(
+  ffi=FixedFileInfo(filevers=({v}, 0), prodvers=({v}, 0), mask=0x3f, flags=0x0, OS=0x40004,
+                    fileType=0x1, subtype=0x0, date=(0, 0)),
+  kids=[
+    StringFileInfo([StringTable('040904b0', [
+      StringStruct('FileDescription', 'PDF Toolkit - split, merge, edit and sign PDF files'),
+      StringStruct('FileVersion', '{ver}'),
+      StringStruct('InternalName', '{app_id}'),
+      StringStruct('OriginalFilename', '{name}.exe'),
+      StringStruct('ProductName', 'PDF Toolkit'),
+      StringStruct('ProductVersion', '{ver}')])]),
+    VarFileInfo([VarStruct('Translation', [1033, 1200])])
+  ]
+)
+"""
+
+GUIDE_ZH = f"""{APP_NAME} {VERSION}（绿色版）
 ====================================
 
 使用方法
   双击 “{APP_NAME}.exe” 即可，无需安装。
   也可以把 PDF 文件拖到 exe 图标上直接打开。
+
+界面语言
+  第一次打开时跟随 Windows 的语言。
+  点右上角的“设置”可以在中文和 English 之间切换，整个界面立即切换。
 
 功能
   · 合并：多个 PDF / 图片合成一个 PDF，可只取每个文件的部分页
@@ -69,6 +90,43 @@ README = f"""{APP_NAME} {VERSION}（绿色版）
   · 需要 Windows 10 / 11（64 位）。
 
 源代码与许可（AGPL-3.0）：https://github.com/Wuxy1997/{APP_ID}
+"""
+
+GUIDE_EN = f"""PDF Toolkit {VERSION} (portable)
+====================================
+
+How to use
+  Double-click "{APP_NAME}.exe". Nothing needs to be installed.
+  You can also drop a PDF file onto the exe to open it.
+
+Language
+  The first time, the program follows the language of Windows.
+  Click Settings (top right) to switch between 中文 and English;
+  the whole interface changes at once.
+
+What it does
+  - Merge: several PDFs / images into one PDF, optionally only some
+    pages of each file
+  - Split: by page ranges, every N pages, one file per page, by
+    bookmarks, or extract some pages
+  - Pages: rotate, delete, drag to reorder, insert pages from another
+    file or blank pages
+  - Edit: add text, change existing text, insert images, highlight /
+    underline / strikeout, pen / line / arrow / box / ellipse, erase,
+    redact (the content is really removed)
+  - Signature: draw it, import a photo (the paper background is removed)
+    or type a name; several signatures can be saved
+  - Also: watermark, page numbers, password protection, compress,
+    export images, export text, print
+
+Notes
+  - Everything is processed on this PC; no file is uploaded anywhere.
+  - Settings and saved signatures are kept in the "data" folder next to
+    the exe. Copy the whole folder along when you move to another PC.
+    To uninstall, delete this folder.
+  - Needs Windows 10 / 11 (64-bit).
+
+Source code and licence (AGPL-3.0): https://github.com/Wuxy1997/{APP_ID}
 """
 
 
@@ -104,9 +162,12 @@ def main():
 
     os.makedirs(WORK, exist_ok=True)
     spec = os.path.join(WORK, APP_ID + ".spec")
+    ver_file = os.path.join(WORK, "version_info.txt")
+    with open(ver_file, "w", encoding="utf-8") as f:
+        f.write(VERSION_INFO.format(v=VERSION.replace(".", ", "), ver=VERSION, app_id=APP_ID, name=APP_NAME))
     with open(spec, "w", encoding="utf-8") as f:
         f.write(SPEC.format(main=os.path.join(ROOT, "main.py"), root=ROOT, ico=ico, name=APP_NAME,
-                            excludes=EXCLUDE, drop=DROP))
+                            excludes=EXCLUDE, drop=DROP, ver_file=ver_file))
     subprocess.check_call([sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean",
                            "--distpath", DIST, "--workpath", WORK, spec], cwd=ROOT)
 
@@ -114,7 +175,8 @@ def main():
     zpath = os.path.join(DIST, f"{APP_ID}-v{VERSION}-portable.zip")
     with zipfile.ZipFile(zpath, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as z:
         z.write(exe, f"{APP_NAME}/{APP_NAME}.exe")
-        z.writestr(f"{APP_NAME}/使用说明.txt", README.replace("\n", "\r\n").encode("utf-8-sig"))
+        for name, text in (("使用说明.txt", GUIDE_ZH), ("User Guide.txt", GUIDE_EN)):    # one guide per language
+            z.writestr(f"{APP_NAME}/{name}", text.replace("\n", "\r\n").encode("utf-8-sig"))
     shutil.rmtree(WORK, ignore_errors=True)
     print(f"exe: {exe}  ({os.path.getsize(exe) / 1048576:.1f} MB)")
     print(f"zip: {zpath}  ({os.path.getsize(zpath) / 1048576:.1f} MB)")

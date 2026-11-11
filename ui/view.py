@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (QGraphicsItem, QGraphicsObject, QGraphicsPathItem
                                QGraphicsScene, QGraphicsTextItem, QGraphicsView)
 
 from core import fonts, pdfops
+from core.i18n import tr
 
 from .common import BLUE, CANVAS
 
@@ -111,7 +112,7 @@ class FloatText(QGraphicsTextItem):
             r = QRectF(0, 0, max(r.width(), self.size * 5.2), r.height())
             p.setPen(QColor("#9aa2b3"))
             p.setFont(self.font())
-            p.drawText(r.adjusted(1.5, 1.5, 0, 0), Qt.AlignLeft | Qt.AlignTop, "在此输入文字")
+            p.drawText(r.adjusted(1.5, 1.5, 0, 0), Qt.AlignLeft | Qt.AlignTop, tr("在此输入文字"))
         opt.state &= ~(opt.state.State_HasFocus | opt.state.State_Selected)
         super().paint(p, opt, widget)
         pen = QPen(QColor(BLUE), 0, Qt.DashLine)
@@ -472,7 +473,7 @@ class PdfView(QGraphicsView):
         """Next click on a page drops this picture there."""
         self.set_tool("place")
         self._payload = (image, data, width_pt)
-        self.hint.emit("在页面上点击要放置的位置；放好后可拖动、拖四角缩放，点击空白处或按回车确认，Esc 取消")
+        self.hint.emit(tr("在页面上点击要放置的位置；放好后可拖动、拖四角缩放，点击空白处或按回车确认，Esc 取消"))
 
     def set_opts(self, **kw):
         self.opts.update(kw)
@@ -516,7 +517,7 @@ class PdfView(QGraphicsView):
             c = it.textCursor()
             c.select(c.SelectionType.Document)
             it.setTextCursor(c)
-        self.hint.emit("输入文字；拖左上角蓝色手柄移动，点击空白处或 Ctrl+回车 确认，Esc 取消")
+        self.hint.emit(tr("输入文字；拖左上角蓝色手柄移动，点击空白处或 Ctrl+回车 确认，Esc 取消"))
 
     def _drop_payload(self, sp, page):
         image, data, width = self._payload
@@ -562,7 +563,7 @@ class PdfView(QGraphicsView):
             self._after({page.index})
             return True
         except Exception as exc:
-            self.failed.emit("写入页面", exc)
+            self.failed.emit(tr("写入页面"), exc)
             self.refresh()
             return False
         finally:
@@ -672,7 +673,7 @@ class PdfView(QGraphicsView):
                     pdfops.erase(pg, box, "#ffffff" if tool == "erase" else "#000000")
             self._after({page.index})
         except Exception as exc:
-            self.failed.emit("编辑", exc)
+            self.failed.emit(tr("编辑"), exc)
             self.refresh()
 
     def lines_of(self, index):
@@ -713,7 +714,7 @@ class PdfView(QGraphicsView):
             if line:
                 self.lineClicked.emit(page.index, line)
             else:
-                self.hint.emit("这里没有可修改的文字（扫描件或图片中的字无法直接修改，可用“擦除”后再加文字）")
+                self.hint.emit(tr("这里没有可修改的文字（扫描件或图片中的字无法直接修改，可用“擦除”后再加文字）"))
         elif self.tool in DRAG_TOOLS:
             self._start_drag(page, sp)
 

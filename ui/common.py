@@ -8,6 +8,8 @@ from PySide6.QtGui import QColor, QFont, QFontDatabase, QIcon, QPainter, QPalett
 from PySide6.QtWidgets import (QApplication, QColorDialog, QFileDialog, QInputDialog, QLineEdit,
                                QMessageBox, QProgressDialog, QToolButton)
 
+from core import fonts, i18n
+from core.i18n import tr
 from core.version import APP_NAME
 
 INK = "#1c2333"        # ribbon / hero
@@ -29,7 +31,7 @@ ICONS = {
     "up": "E74A", "down": "E74B", "close": "E711", "home": "E80F", "date": "E787", "blank": "E8A5",
     "insert": "E8F4", "extract": "E8DE", "watermark": "EDA8", "number": "E71D", "export": "E78C",
     "images": "E8B9", "totext": "E8E3", "key": "E8D7", "redact": "E8D5", "recent": "E81C",
-    "help": "E9CE", "sort": "E8CB", "check": "E73E", "more": "E712",
+    "help": "E9CE", "sort": "E8CB", "check": "E73E", "more": "E712", "settings": "E713",
 }
 
 _icon_family = None
@@ -70,13 +72,14 @@ def icon(name, color="#ffffff", size=24, mirror=False, disabled="#6b7488"):
 
 
 STYLE = f"""
-* {{ font-family: "Microsoft YaHei UI", "Microsoft YaHei", "Segoe UI"; font-size: 13px; }}
+* {{ font-family: @FONT@; font-size: 13px; }}
 QMainWindow, QDialog {{ background: #f3f4f7; color: {TEXT}; }}
 QToolBar {{ background: {INK}; border: none; padding: 3px 6px; spacing: 1px; }}
 QToolBar#tools {{ background: {INK2}; border-top: 1px solid #36405a; padding: 2px 6px; }}
 QToolBar#opts {{ background: #323c56; border-top: 1px solid #414b66; padding: 3px 10px; spacing: 4px; }}
 QToolBar#opts QLabel#hint {{ color: #ffd88a; padding-left: 8px; }}
 QToolBar#tools QToolButton {{ padding: 3px 5px; min-width: 40px; }}
+QToolBar#main QToolButton {{ @MAINBTN@ }}
 QToolBar QToolButton {{ color: #e8ebf3; background: transparent; border: 1px solid transparent;
     border-radius: 6px; padding: 4px 6px; min-width: 44px; font-size: 12px; }}
 QToolBar QToolButton:hover {{ background: #36405a; }}
@@ -184,7 +187,52 @@ def apply_theme(app):
     pal.setColor(QPalette.Disabled, QPalette.ButtonText, QColor("#9aa2b3"))
     pal.setColor(QPalette.Disabled, QPalette.WindowText, QColor("#9aa2b3"))
     app.setPalette(pal)
-    app.setStyleSheet(STYLE.replace("@IND@", _indicator_images()))
+    family = ('"Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei"' if i18n.lang() == "en"
+              else '"Microsoft YaHei UI", "Microsoft YaHei", "Segoe UI"')
+    # the whole top bar stays on one row at the default width; English labels are longer, so tighter still
+    tight = "padding: 4px 3px; min-width: 38px;" if i18n.lang() == "en" else "padding: 4px 5px; min-width: 42px;"
+    app.setStyleSheet(STYLE.replace("@IND@", _indicator_images()).replace("@FONT@", family).replace("@MAINBTN@", tight))
+
+
+_qt_tr = None
+
+
+def apply_language(app):
+    """Qt's own texts (colour dialog, OK / Cancel of input boxes) and the interface font follow the language."""
+    global _qt_tr
+    from PySide6.QtCore import QLibraryInfo, QLocale, QTranslator
+    if _qt_tr is not None:
+        app.removeTranslator(_qt_tr)
+        _qt_tr = None
+    if i18n.lang() == "zh":
+        t = QTranslator(app)
+        if t.load(QLocale(QLocale.Chinese, QLocale.China), "qtbase", "_", QLibraryInfo.path(QLibraryInfo.TranslationsPath)):
+            app.installTranslator(t)
+            _qt_tr = t
+    app.setApplicationName(tr(APP_NAME))
+    apply_theme(app)
+
+
+def pick_language(cfg, force=None):
+    """--lang for this run, else what Settings saved, else the language of Windows."""
+    from PySide6.QtCore import QLocale
+    lang = force if force in i18n.LANGS else cfg.get("lang")
+    if lang not in i18n.LANGS:
+        lang = "zh" if QLocale.system().language() == QLocale.Chinese else "en"
+    i18n.set_lang(lang)
+    return lang
+
+
+def fill_fonts(box):
+    """Font names in the interface language; the item data is the key the PDF code uses."""
+    for name in fonts.names():
+        box.addItem(tr(name), name)
+
+
+def pick_font(box, name):
+    i = box.findData(name)
+    if i >= 0:
+        box.setCurrentIndex(i)
 
 
 def primary(btn):
@@ -195,10 +243,10 @@ def primary(btn):
 # ------------------------------------------------------------ message boxes
 
 def _box(parent, kind, text, buttons=QMessageBox.Ok, default=None):
-    box = QMessageBox(kind, APP_NAME, text, buttons, parent)
-    for b, label in ((QMessageBox.Ok, "确定"), (QMessageBox.Yes, "是"), (QMessageBox.No, "否"),
-                     (QMessageBox.Cancel, "取消"), (QMessageBox.Save, "保存"), (QMessageBox.Discard, "不保存"),
-                     (QMessageBox.Open, "打开")):
+    box = QMessageBox(kind, tr(APP_NAME), text, buttons, parent)
+    for b, label in ((QMessageBox.Ok, tr("确定")), (QMessageBox.Yes, tr("是")), (QMessageBox.No, tr("否")),
+                     (QMessageBox.Cancel, tr("取消")), (QMessageBox.Save, tr("保存")), (QMessageBox.Discard, tr("不保存")),
+                     (QMessageBox.Open, tr("打开"))):
         if box.button(b):
             box.button(b).setText(label)
     if default:
@@ -230,13 +278,13 @@ def explain(exc):
     from core.pdfops import NeedPassword
     from core.ranges import RangeError
     if isinstance(exc, NeedPassword):
-        return "密码不正确，无法打开这个文件。"
+        return tr("密码不正确，无法打开这个文件。")
     if isinstance(exc, RangeError):
         return str(exc)
     if isinstance(exc, PermissionError):
-        return "文件正被其他程序占用，或没有写入权限。\n请关闭正在打开它的程序（如浏览器、PDF阅读器）后再试，或换一个保存位置。"
+        return tr("文件正被其他程序占用，或没有写入权限。\n请关闭正在打开它的程序（如浏览器、PDF阅读器）后再试，或换一个保存位置。")
     if isinstance(exc, FileNotFoundError):
-        return f"找不到文件：{exc.filename or exc}"
+        return tr("找不到文件：{path}", path=exc.filename or exc)
     if isinstance(exc, ValueError) and str(exc):
         return str(exc)
     return f"{type(exc).__name__}: {exc}"
@@ -244,14 +292,14 @@ def explain(exc):
 
 def error(parent, what, exc):
     traceback.print_exception(type(exc), exc, exc.__traceback__)
-    warn(parent, f"{what}失败。\n\n{explain(exc)}")
+    warn(parent, tr("{what}失败。\n\n{why}", what=what, why=explain(exc)))
 
 
 def get_password(parent, name, again=False):
-    text = f"“{name}” 有密码保护，请输入打开密码："
+    text = tr("“{name}” 有密码保护，请输入打开密码：", name=name)
     if again:
-        text = "密码不正确，请重新输入。\n" + text
-    pw, ok = QInputDialog.getText(parent, APP_NAME, text, QLineEdit.Password)
+        text = tr("密码不正确，请重新输入。\n") + text
+    pw, ok = QInputDialog.getText(parent, tr(APP_NAME), text, QLineEdit.Password)
     return pw if ok else None
 
 
@@ -275,8 +323,8 @@ class Progress:
     """with Progress(parent, "合并中…") as p: op(progress=p.step)"""
 
     def __init__(self, parent, text):
-        self.dlg = QProgressDialog(text, "取消", 0, 100, parent)
-        self.dlg.setWindowTitle(APP_NAME)
+        self.dlg = QProgressDialog(text, tr("取消"), 0, 100, parent)
+        self.dlg.setWindowTitle(tr(APP_NAME))
         self.dlg.setWindowModality(Qt.WindowModal)
         self.dlg.setMinimumDuration(400)
         self.dlg.setAutoClose(False)
@@ -305,14 +353,14 @@ ANY_FILTER = "PDF 和图片 (*.pdf *.png *.jpg *.jpeg *.bmp *.gif *.tif *.tiff *
 
 def pick_open(parent, title, start, flt=PDF_FILTER, many=False):
     if many:
-        files, _ = QFileDialog.getOpenFileNames(parent, title, start, flt)
+        files, _ = QFileDialog.getOpenFileNames(parent, title, start, tr(flt))
         return files
-    f, _ = QFileDialog.getOpenFileName(parent, title, start, flt)
+    f, _ = QFileDialog.getOpenFileName(parent, title, start, tr(flt))
     return f
 
 
 def pick_save(parent, title, start, flt=PDF_FILTER):
-    f, _ = QFileDialog.getSaveFileName(parent, title, start, flt)
+    f, _ = QFileDialog.getSaveFileName(parent, title, start, tr(flt))
     return f
 
 
@@ -329,7 +377,7 @@ class ColorButton(QToolButton):
         self._c = color
         self._border = border
         self.setFixedSize(34, 26)
-        self.setToolTip("颜色")
+        self.setToolTip(tr("颜色"))
         self.clicked.connect(self._pick)
         self._paint()
 
@@ -348,7 +396,7 @@ class ColorButton(QToolButton):
 
     def _pick(self):
         dlg = QColorDialog(QColor(self._c), self.window())
-        dlg.setWindowTitle("选择颜色")
+        dlg.setWindowTitle(tr("选择颜色"))
         for i, c in enumerate(self.PRESETS):
             QColorDialog.setCustomColor(i, QColor(c))
         if dlg.exec():

@@ -8,7 +8,8 @@ from PySide6.QtGui import QColor, QFont, QFontDatabase, QFontMetricsF, QIcon, QI
 from PySide6.QtWidgets import (QComboBox, QDialog, QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem,
                                QPushButton, QSlider, QTabWidget, QVBoxLayout, QWidget)
 
-from core import config
+from core import config, i18n
+from core.i18n import tr
 
 from . import common
 from .common import primary
@@ -185,7 +186,7 @@ class SignPad(QWidget):
             f.setPixelSize(15)
             p.setFont(f)
             p.drawText(self.rect().adjusted(0, 0, 0, -int(self.height() * 0.3)), Qt.AlignCenter,
-                       "按住鼠标左键在这里签名")
+                       tr("按住鼠标左键在这里签名"))
         self._draw(p)
 
     def image(self, scale=3.0):
@@ -204,7 +205,7 @@ class SignPad(QWidget):
 class SignatureDialog(QDialog):
     def __init__(self, parent=None, start_dir=""):
         super().__init__(parent)
-        self.setWindowTitle("签名")
+        self.setWindowTitle(tr("签名"))
         self.resize(900, 520)
         self.chosen = None
         self.start_dir = start_dir
@@ -212,7 +213,7 @@ class SignatureDialog(QDialog):
         root = QHBoxLayout(self)
 
         left = QVBoxLayout()
-        left.addWidget(QLabel("<b>我的签名</b>（双击可直接使用）"))
+        left.addWidget(QLabel(tr("<b>我的签名</b>（双击可直接使用）")))
         self.lst = QListWidget()
         self.lst.setObjectName("plain")
         self.lst.setIconSize(QSize(220, 90))
@@ -221,9 +222,9 @@ class SignatureDialog(QDialog):
         self.lst.itemDoubleClicked.connect(lambda *_: self._use())
         left.addWidget(self.lst, 1)
         row = QHBoxLayout()
-        self.btn_use = primary(QPushButton("使用这个签名"))
+        self.btn_use = primary(QPushButton(tr("使用这个签名")))
         self.btn_use.clicked.connect(self._use)
-        self.btn_del = QPushButton("删除")
+        self.btn_del = QPushButton(tr("删除"))
         self.btn_del.clicked.connect(self._delete)
         row.addWidget(self.btn_use, 1)
         row.addWidget(self.btn_del)
@@ -231,9 +232,9 @@ class SignatureDialog(QDialog):
         root.addLayout(left)
 
         tabs = QTabWidget()
-        tabs.addTab(self._tab_draw(), "手写签名")
-        tabs.addTab(self._tab_photo(), "从图片/照片导入")
-        tabs.addTab(self._tab_type(), "输入姓名生成")
+        tabs.addTab(self._tab_draw(), tr("手写签名"))
+        tabs.addTab(self._tab_photo(), tr("从图片/照片导入"))
+        tabs.addTab(self._tab_type(), tr("输入姓名生成"))
         root.addWidget(tabs, 1)
         self._fill()
 
@@ -265,7 +266,7 @@ class SignatureDialog(QDialog):
 
     def _delete(self):
         it = self.lst.currentItem()
-        if it and common.ask(self, "删除这个签名？"):
+        if it and common.ask(self, tr("删除这个签名？")):
             try:
                 os.remove(it.data(Qt.UserRole))
             except OSError:
@@ -274,7 +275,7 @@ class SignatureDialog(QDialog):
 
     def _save(self, img, use=False):
         if img is None or img.isNull():
-            common.warn(self, "还没有可保存的签名。")
+            common.warn(self, tr("还没有可保存的签名。"))
             return
         path = store(img)
         self._fill(select=path)
@@ -285,9 +286,9 @@ class SignatureDialog(QDialog):
     def _buttons(self, getter):
         row = QHBoxLayout()
         row.addStretch(1)
-        b1 = QPushButton("保存到签名库")
+        b1 = QPushButton(tr("保存到签名库"))
         b1.clicked.connect(lambda: self._save(getter()))
-        b2 = primary(QPushButton("保存并使用"))
+        b2 = primary(QPushButton(tr("保存并使用")))
         b2.clicked.connect(lambda: self._save(getter(), use=True))
         row.addWidget(b1)
         row.addWidget(b2)
@@ -299,7 +300,7 @@ class SignatureDialog(QDialog):
         for name, col in INKS:
             pm = QPixmap(16, 16)
             pm.fill(QColor(col))
-            c.addItem(QIcon(pm), name, col)
+            c.addItem(QIcon(pm), tr(name), col)
         return c
 
     # -- draw
@@ -309,21 +310,21 @@ class SignatureDialog(QDialog):
         self.pad = SignPad()
         v.addWidget(self.pad, 1)
         row = QHBoxLayout()
-        row.addWidget(QLabel("墨水"))
+        row.addWidget(QLabel(tr("墨水")))
         ink = self._ink_combo()
         ink.currentIndexChanged.connect(lambda: (setattr(self.pad, "color", ink.currentData()), self.pad.update()))
         row.addWidget(ink)
-        row.addWidget(QLabel("粗细"))
+        row.addWidget(QLabel(tr("粗细")))
         sl = QSlider(Qt.Horizontal)
         sl.setRange(15, 70)
         sl.setValue(32)
         sl.setFixedWidth(120)
         sl.valueChanged.connect(lambda x: setattr(self.pad, "base", x / 10))
         row.addWidget(sl)
-        b = QPushButton("撤销一笔")
+        b = QPushButton(tr("撤销一笔"))
         b.clicked.connect(self.pad.undo)
         row.addWidget(b)
-        b = QPushButton("清空")
+        b = QPushButton(tr("清空"))
         b.clicked.connect(self.pad.clear)
         row.addWidget(b)
         row.addStretch(1)
@@ -335,19 +336,19 @@ class SignatureDialog(QDialog):
     def _tab_photo(self):
         w = QWidget()
         v = QVBoxLayout(w)
-        tip = QLabel("在白纸上签名后拍照或扫描，选择图片后会自动去掉纸张背景，只保留笔迹。")
+        tip = QLabel(tr("在白纸上签名后拍照或扫描，选择图片后会自动去掉纸张背景，只保留笔迹。"))
         tip.setWordWrap(True)
         v.addWidget(tip)
-        self.photo_view = QLabel("尚未选择图片")
+        self.photo_view = QLabel(tr("尚未选择图片"))
         self.photo_view.setAlignment(Qt.AlignCenter)
         self.photo_view.setMinimumHeight(220)
         self.photo_view.setStyleSheet("background: #e9ecf3; border: 1px solid #c3c9d6; color: #7a8194;")
         v.addWidget(self.photo_view, 1)
         row = QHBoxLayout()
-        b = QPushButton("选择图片…")
+        b = QPushButton(tr("选择图片…"))
         b.clicked.connect(self._pick_photo)
         row.addWidget(b)
-        row.addWidget(QLabel("去背景强度"))
+        row.addWidget(QLabel(tr("去背景强度")))
         self.cut = QSlider(Qt.Horizontal)
         self.cut.setRange(90, 245)
         self.cut.setValue(190)
@@ -361,14 +362,14 @@ class SignatureDialog(QDialog):
         return w
 
     def _pick_photo(self):
-        f = common.pick_open(self, "选择签名图片", self.start_dir, common.IMG_FILTER)
+        f = common.pick_open(self, tr("选择签名图片"), self.start_dir, common.IMG_FILTER)
         if f:
             self.load_photo(f)
 
     def load_photo(self, path):
         img = QImage(path)
         if img.isNull():
-            common.warn(self, "无法读取这张图片。")
+            common.warn(self, tr("无法读取这张图片。"))
             return
         self._photo = img
         self._photo_update()
@@ -380,7 +381,7 @@ class SignatureDialog(QDialog):
         res = self._photo_result()
         if res is None:
             if self._photo is not None:
-                self.photo_view.setText("没有识别到笔迹，请调低“去背景强度”")
+                self.photo_view.setText(tr("没有识别到笔迹，请调低“去背景强度”"))
                 self.photo_view.setPixmap(QPixmap())
             return
         self.photo_view.setPixmap(preview_pixmap(res, QSize(520, 210)))
@@ -391,12 +392,16 @@ class SignatureDialog(QDialog):
         v = QVBoxLayout(w)
         row = QHBoxLayout()
         self.name = QLineEdit()
-        self.name.setPlaceholderText("输入姓名")
+        self.name.setPlaceholderText(tr("输入姓名"))
         row.addWidget(self.name, 1)
         self.face = QComboBox()
         have = set(QFontDatabase.families())
-        for label, fam in (("行楷", "STXingkai"), ("行楷", "华文行楷"), ("楷体", "KaiTi"), ("华文楷体", "STKaiti"),
-                           ("英文手写", "Segoe Script"), ("仿宋", "FangSong"), ("雅黑", "Microsoft YaHei")):
+        faces = [(tr("行楷"), "STXingkai"), (tr("行楷"), "华文行楷"), (tr("楷体"), "KaiTi"), (tr("华文楷体"), "STKaiti"),
+                 (tr("英文手写"), "Segoe Script"), ("Ink Free", "Ink Free"), ("Lucida Handwriting", "Lucida Handwriting"),
+                 (tr("仿宋"), "FangSong"), (tr("雅黑"), "Microsoft YaHei")]
+        if i18n.lang() == "en":             # names typed in English: handwriting faces first
+            faces = faces[4:7] + faces[:4] + faces[7:]
+        for label, fam in faces:
             if fam in have and self.face.findData(fam) < 0 and self.face.findText(label) < 0:
                 self.face.addItem(label, fam)
         row.addWidget(self.face)

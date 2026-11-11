@@ -1,6 +1,8 @@
 """Page range text such as "1-3, 5, 8-" (1-based for the user, 0-based inside)."""
 import re
 
+from .i18n import tr
+
 
 class RangeError(ValueError):
     pass
@@ -18,7 +20,7 @@ def parse_part(part, n):
     part = part.strip()
     m = _PART.match(part)
     if not m or part in ("", "-"):
-        raise RangeError(f"看不懂的页码：“{part}”")
+        raise RangeError(tr("看不懂的页码：“{part}”", part=part))
     a, b = m.group(1), m.group(2)
     if b is None:
         first = last = int(a)
@@ -27,7 +29,7 @@ def parse_part(part, n):
         last = int(b) if b else n
     for v in (first, last):
         if v < 1 or v > n:
-            raise RangeError(f"页码 {v} 超出范围（本文件共 {n} 页）")
+            raise RangeError(tr("页码 {v} 超出范围（本文件共 {n} 页）", v=v, n=n))
     step = 1 if last >= first else -1
     return [i - 1 for i in range(first, last + step, step)]
 
@@ -36,13 +38,13 @@ def parse_groups(text, n):
     """Each comma/semicolon separated piece becomes one group."""
     text = _norm(text)
     if not text:
-        raise RangeError("请填写页码范围")
+        raise RangeError(tr("请填写页码范围"))
     groups = []
     for part in re.split(r"[,;\n]+", text):
         if part.strip():
             groups.append(parse_part(part, n))
     if not groups:
-        raise RangeError("请填写页码范围")
+        raise RangeError(tr("请填写页码范围"))
     return groups
 
 

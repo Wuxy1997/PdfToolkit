@@ -6,6 +6,7 @@ from PySide6.QtGui import QColor, QFont, QLinearGradient, QPainter, QPen
 from PySide6.QtWidgets import (QAbstractButton, QGridLayout, QHBoxLayout, QLabel, QListWidget, QListWidgetItem,
                                QPushButton, QSizePolicy, QVBoxLayout, QWidget)
 
+from core.i18n import tr
 from core.version import APP_NAME, VERSION
 
 from .common import ACCENT, INK, glyph_pixmap, primary
@@ -59,7 +60,7 @@ class Tile(QAbstractButton):
         f.setBold(False)
         p.setFont(f)
         p.setPen(QColor(255, 255, 255, 225))
-        p.drawText(QRectF(20, 102, r.width() - 30, r.height() - 106), Qt.AlignLeft | Qt.AlignTop, self.desc)
+        p.drawText(QRectF(20, 102, r.width() - 30, r.height() - 106), Qt.AlignLeft | Qt.AlignTop | Qt.TextWordWrap, self.desc)
 
     def enterEvent(self, e):
         self.update()
@@ -128,15 +129,15 @@ class Hero(QWidget):
         f.setBold(True)
         p.setFont(f)
         p.setPen(Qt.white)
-        p.drawText(QRectF(30, 214, 250, 44), Qt.AlignLeft | Qt.AlignVCenter, APP_NAME)
+        p.drawText(QRectF(30, 214, 250, 44), Qt.AlignLeft | Qt.AlignVCenter, tr(APP_NAME))
         f.setPixelSize(13)
         f.setBold(False)
         p.setFont(f)
         p.setPen(QColor("#aeb6ca"))
-        p.drawText(QRectF(30, 260, 250, 24), Qt.AlignLeft | Qt.AlignVCenter, f"版本 {VERSION} · 绿色免安装")
+        p.drawText(QRectF(30, 260, 250, 24), Qt.AlignLeft | Qt.AlignVCenter, tr("版本 {ver} · 绿色免安装", ver=VERSION))
         p.setPen(QColor("#dfe3ee"))
-        lines = ["✓  拆分 / 合并 / 页面整理", "✓  加文字、改字、图片、批注", "✓  手写签名、图片签名",
-                 "✓  水印、页码、加密、压缩", "✓  全部在本机处理，不上传文件"]
+        lines = [tr("✓  拆分 / 合并 / 页面整理"), tr("✓  加文字、改字、图片、批注"), tr("✓  手写签名、图片签名"),
+                 tr("✓  水印、页码、加密、压缩"), tr("✓  全部在本机处理，不上传文件")]
         for i, t in enumerate(lines):
             p.drawText(QRectF(30, 304 + i * 27, 260, 24), Qt.AlignLeft | Qt.AlignVCenter, t)
         p.setPen(QPen(QColor(ACCENT), 3))
@@ -159,18 +160,19 @@ class Home(QWidget):
         mid = QVBoxLayout()
         mid.setContentsMargins(26, 22, 14, 22)
         mid.setSpacing(14)
-        head = QLabel("想做什么？")
+        head = QLabel(tr("想做什么？"))
         head.setStyleSheet("font-size: 22px; font-weight: bold; color: #1c2333;")
         mid.addWidget(head)
         grid = QGridLayout()
         grid.setSpacing(14)
         for i, (key, title, desc, color, ic) in enumerate(TILES):
-            t = Tile(title, desc, color, ic)
+            t = Tile(tr(title), tr(desc), color, ic)
             t.clicked.connect(lambda _=False, k=key: self.action.emit(k))
             grid.addWidget(t, i // 3, i % 3)
         mid.addLayout(grid, 1)
-        drop = QLabel("也可以把 PDF 或图片直接拖进这个窗口：拖一个文件打开，拖多个文件合并")
+        drop = QLabel(tr("也可以把 PDF 或图片直接拖进这个窗口：拖一个文件打开，拖多个文件合并"))
         drop.setAlignment(Qt.AlignCenter)
+        drop.setWordWrap(True)
         drop.setStyleSheet("background: #dfe4ee; border: 2px dashed #a7b0c4; border-radius: 10px; padding: 16px;"
                            " color: #48536e; font-size: 14px;")
         mid.addWidget(drop)
@@ -178,7 +180,7 @@ class Home(QWidget):
 
         right = QVBoxLayout()
         right.setContentsMargins(12, 22, 22, 22)
-        lab = QLabel("最近打开")
+        lab = QLabel(tr("最近打开"))
         lab.setStyleSheet("font-size: 16px; font-weight: bold; color: #1c2333;")
         right.addWidget(lab)
         self.recent = QListWidget()
@@ -191,7 +193,7 @@ class Home(QWidget):
             "QListWidget::item:selected { background: #dbe6fb; color: #1f2430; }")
         self.recent.itemClicked.connect(lambda it: self.openRecent.emit(it.data(Qt.UserRole)))
         right.addWidget(self.recent, 1)
-        b = primary(QPushButton("打开文件…"))
+        b = primary(QPushButton(tr("打开文件…")))
         b.setMinimumHeight(34)
         b.clicked.connect(lambda: self.action.emit("open"))
         right.addWidget(b)
@@ -207,6 +209,6 @@ class Home(QWidget):
             it.setToolTip(p)
             self.recent.addItem(it)
         if not self.recent.count():
-            it = QListWidgetItem("还没有打开过文件")
+            it = QListWidgetItem(tr("还没有打开过文件"))
             it.setFlags(Qt.NoItemFlags)
             self.recent.addItem(it)

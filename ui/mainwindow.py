@@ -4,16 +4,19 @@ import time
 
 from PySide6.QtCore import QPointF, QRectF, QSize, Qt
 from PySide6.QtGui import QAction, QActionGroup, QImage, QKeySequence, QPainter
-from PySide6.QtWidgets import (QComboBox, QDoubleSpinBox, QHBoxLayout, QLabel, QMainWindow, QMenu, QSizePolicy,
+from PySide6.QtWidgets import (QApplication, QComboBox, QDoubleSpinBox, QHBoxLayout, QLabel, QMainWindow, QMenu, QSizePolicy,
                                QSpinBox, QStackedWidget, QToolBar, QToolButton, QVBoxLayout, QWidget)
 
-from core import config, fonts, pdfops
+from core import config, fonts, i18n, pdfops
 from core.docmodel import Doc
+from core.i18n import tr
 from core.version import APP_NAME, VERSION
 
 from . import common, dialogs, signature
 from .common import ColorButton, Progress, icon
+from .helptext import HELP
 from .home import Home
+from .settings import SettingsDialog
 from .thumbs import Thumbs
 from .view import PdfView, image_bytes
 
@@ -41,20 +44,13 @@ TOOLS = [  # key, label, icon, tip
 ]
 COLOR_KEY = {"text": "text_color", "date": "text_color", "highlight": "hl_color"}
 
-HELP = """<h3>{name} {ver}</h3>
-<p><b>页面整理</b>：左侧缩略图可多选（Ctrl / Shift），拖动调整顺序，右键或用上方按钮旋转、删除、提取、插入。</p>
-<p><b>加文字 / 图片 / 签名</b>：放到页面上后可以拖动（文字拖左上角的蓝色手柄），图片和签名拖四角缩放；
-点击空白处确认，Esc 取消。</p>
-<p><b>改文字</b>：鼠标移到文字上会出现蓝框，点击即可修改。扫描件里的字是图片，请用“擦除”后再“加文字”。</p>
-<p><b>擦除 / 涂黑</b>：会真正删除框内的内容，不只是盖住。</p>
-<p><b>快捷键</b>：Ctrl+O 打开　Ctrl+S 保存　Ctrl+Shift+S 另存为　Ctrl+Z 撤销　Ctrl+Y 重做　Ctrl+P 打印<br>
-Ctrl+滚轮 缩放　Ctrl+0 适合宽度　Delete 删除选中的页面</p>
-<p>所有处理都在本机完成，文件不会上传。</p>"""
-
 
 class MainWindow(QMainWindow):
+    current = None          # the window in use (a language switch replaces it)
+
     def __init__(self, cfg):
         super().__init__()
+        MainWindow.current = self
         self.cfg = cfg
         self.dm = None
         self.acts = {}
@@ -77,13 +73,14 @@ class MainWindow(QMainWindow):
         sv = QVBoxLayout(side)
         sv.setContentsMargins(0, 0, 0, 0)
         sv.setSpacing(0)
-        self.side_title = QLabel("页面")
+        self.side_title = QLabel(tr("页面"))
         self.side_title.setStyleSheet("color: #e8ebf3; font-weight: bold; padding: 8px 12px; background: #232833;")
         sv.addWidget(self.side_title)
         sv.addWidget(self.thumbs, 1)
-        tip = QLabel("Ctrl/Shift 多选 · 拖动排序 · 右键更多")
+        tip = QLabel(tr("Ctrl/Shift 多选 · 拖动排序 · 右键更多"))
         tip.setStyleSheet("color: #8b93a7; font-size: 11px; padding: 6px 8px; background: #232833;")
         tip.setAlignment(Qt.AlignCenter)
+        tip.setWordWrap(i18n.lang() == "en")       # the English line is longer than the panel
         sv.addWidget(tip)
         h.addWidget(side)
         h.addWidget(self.view, 1)
@@ -121,7 +118,7 @@ class MainWindow(QMainWindow):
         a.triggered.connect(lambda _=False: slot())
         if shortcut:
             a.setShortcut(QKeySequence(shortcut))
-        a.setToolTip((tip or text) + (f"（{shortcut}）" if shortcut else ""))
+        a.setToolTip((tip or text) + (tr("（{key}）", key=shortcut) if shortcut else ""))
         self.acts[key] = a
         if doc:
             self.doc_acts.append(a)
@@ -143,7 +140,7 @@ class MainWindow(QMainWindow):
         for b in tb.findChildren(QToolButton):
             if b.objectName() == "qt_toolbar_ext_button":
                 b.setIcon(icon("more"))
-                b.setToolTip("更多")
+                b.setToolTip(tr("更多"))
                 continue
             b.ensurePolished()
             b.setMinimumWidth(b.sizeHint().width())
@@ -169,38 +166,39 @@ class MainWindow(QMainWindow):
         self.doc_widgets = []
         tb = self._bar("main")
         A = self._act
-        tb.addAction(A("open", "打开", "open", self.open_dialog, "Ctrl+O", doc=False))
-        tb.addAction(A("save", "保存", "save", self.save, "Ctrl+S"))
-        tb.addAction(A("saveas", "另存为", "saveas", self.save_as, "Ctrl+Shift+S"))
-        tb.addAction(A("print", "打印", "print", self.print_doc, "Ctrl+P"))
-        tb.addAction(A("close", "关闭", "close", self.close_doc, "Ctrl+W", "关闭当前文档，回到首页"))
+        tb.addAction(A("open", tr("打开"), "open", self.open_dialog, "Ctrl+O", doc=False))
+        tb.addAction(A("save", tr("保存"), "save", self.save, "Ctrl+S"))
+        tb.addAction(A("saveas", tr("另存为"), "saveas", self.save_as, "Ctrl+Shift+S"))
+        tb.addAction(A("print", tr("打印"), "print", self.print_doc, "Ctrl+P"))
+        tb.addAction(A("close", tr("关闭"), "close", self.close_doc, "Ctrl+W", tr("关闭当前文档，回到首页")))
         tb.addSeparator()
-        tb.addAction(A("undo", "撤销", "undo", self.undo, "Ctrl+Z"))
-        tb.addAction(A("redo", "重做", "redo", self.redo, "Ctrl+Y"))
+        tb.addAction(A("undo", tr("撤销"), "undo", self.undo, "Ctrl+Z"))
+        tb.addAction(A("redo", tr("重做"), "redo", self.redo, "Ctrl+Y"))
         tb.addSeparator()
-        tb.addAction(A("merge", "合并", "merge", self.merge, tip="把多个 PDF / 图片合并成一个", doc=False))
-        tb.addAction(A("split", "拆分", "split", self.split, tip="把 PDF 拆成多个文件", doc=False))
+        tb.addAction(A("merge", tr("合并"), "merge", self.merge, tip=tr("把多个 PDF / 图片合并成一个"), doc=False))
+        tb.addAction(A("split", tr("拆分"), "split", self.split, tip=tr("把 PDF 拆成多个文件"), doc=False))
         tb.addSeparator()
-        ins_file = A("ins_file", "从文件插入页面…", "insert", self.insert_file)
-        ins_blank = A("ins_blank", "插入空白页", "blank", self.insert_blank)
-        self._menu_button(tb, "插入", "insert", [ins_file, ins_blank])
-        tb.addAction(A("rot_l", "左转", "rotate", lambda: self.rotate(-90), tip="选中的页面逆时针旋转 90°", mirror=True))
-        tb.addAction(A("rot_r", "右转", "rotate", lambda: self.rotate(90), tip="选中的页面顺时针旋转 90°"))
-        tb.addAction(A("delete", "删除页", "delete", self.delete_pages, tip="删除选中的页面"))
-        tb.addAction(A("extract", "提取", "extract", self.extract_pages, tip="把选中的页面另存为一个新 PDF"))
+        ins_file = A("ins_file", tr("从文件插入页面…"), "insert", self.insert_file)
+        ins_blank = A("ins_blank", tr("插入空白页"), "blank", self.insert_blank)
+        self._menu_button(tb, tr("插入"), "insert", [ins_file, ins_blank])
+        tb.addAction(A("rot_l", tr("左转"), "rotate", lambda: self.rotate(-90), tip=tr("选中的页面逆时针旋转 90°"), mirror=True))
+        tb.addAction(A("rot_r", tr("右转"), "rotate", lambda: self.rotate(90), tip=tr("选中的页面顺时针旋转 90°")))
+        tb.addAction(A("delete", tr("删除页"), "delete", self.delete_pages, tip=tr("删除选中的页面")))
+        tb.addAction(A("extract", tr("提取"), "extract", self.extract_pages, tip=tr("把选中的页面另存为一个新 PDF")))
         tb.addSeparator()
-        tb.addAction(A("watermark", "水印", "watermark", self.watermark))
-        tb.addAction(A("number", "页码", "number", self.page_numbers))
-        tb.addAction(A("encrypt", "加密", "lock", self.encrypt, tip="设置或移除打开密码"))
-        tb.addAction(A("compress", "压缩", "compress", self.compress, tip="缩小文件体积"))
-        ex_img = A("ex_img", "导出为图片…", "images", self.export_images)
-        ex_txt = A("ex_txt", "导出文字 (.txt)…", "totext", self.export_text)
-        self._menu_button(tb, "导出", "export", [ex_img, ex_txt])
+        tb.addAction(A("watermark", tr("水印"), "watermark", self.watermark))
+        tb.addAction(A("number", tr("页码"), "number", self.page_numbers))
+        tb.addAction(A("encrypt", tr("加密"), "lock", self.encrypt, tip=tr("设置或移除打开密码")))
+        tb.addAction(A("compress", tr("压缩"), "compress", self.compress, tip=tr("缩小文件体积")))
+        ex_img = A("ex_img", tr("导出为图片…"), "images", self.export_images)
+        ex_txt = A("ex_txt", tr("导出文字 (.txt)…"), "totext", self.export_text)
+        self._menu_button(tb, tr("导出"), "export", [ex_img, ex_txt])
         sp = QWidget()
         sp.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         sp.setStyleSheet("background: transparent;")
         tb.addWidget(sp)
-        tb.addAction(A("help", "帮助", "help", self.show_help, "F1", doc=False))
+        tb.addAction(A("settings", tr("设置"), "settings", self.show_settings, doc=False))
+        tb.addAction(A("help", tr("帮助"), "help", self.show_help, "F1", doc=False))
         self._no_squeeze(tb)
 
     def _build_tool_bar(self):
@@ -214,8 +212,8 @@ class MainWindow(QMainWindow):
                 tb.addSeparator()
                 continue
             key, label, ic, tip = spec
-            a = QAction(icon(ic, size=20), label, self)
-            a.setToolTip(tip)
+            a = QAction(icon(ic, size=20), tr(label), self)
+            a.setToolTip(tr(tip))
             a.setCheckable(True)
             a.triggered.connect(lambda _=False, k=key: self.pick_tool(k))
             self.tool_group.addAction(a)
@@ -226,12 +224,12 @@ class MainWindow(QMainWindow):
         self._no_squeeze(tb)
         self.addToolBarBreak()
         tb = self.tb_opts = self._bar("opts")
-        self.lbl_color = QLabel("颜色")
+        self.lbl_color = QLabel(tr("颜色"))
         tb.addWidget(self.lbl_color)
         self.color = ColorButton(self.cfg["color"])
         self.color.changed.connect(self._color_changed)
         tb.addWidget(self.color)
-        tb.addWidget(QLabel("线宽"))
+        tb.addWidget(QLabel(tr("线宽")))
         self.width = QDoubleSpinBox()
         self.width.setRange(0.3, 30)
         self.width.setSingleStep(0.5)
@@ -239,12 +237,12 @@ class MainWindow(QMainWindow):
         self.width.setValue(self.cfg["line_width"])
         self.width.valueChanged.connect(lambda v: self.view.set_opts(width=v))
         tb.addWidget(self.width)
-        tb.addWidget(QLabel("字体"))
+        tb.addWidget(QLabel(tr("字体")))
         self.font_box = QComboBox()
-        self.font_box.addItems(fonts.names())
-        self.font_box.currentTextChanged.connect(lambda t: self.view.set_opts(font=t))
+        common.fill_fonts(self.font_box)
+        self.font_box.currentIndexChanged.connect(lambda _: self.view.set_opts(font=self.font_box.currentData()))
         tb.addWidget(self.font_box)
-        tb.addWidget(QLabel("字号"))
+        tb.addWidget(QLabel(tr("字号")))
         self.size = QSpinBox()
         self.size.setRange(5, 200)
         self.size.valueChanged.connect(lambda v: self.view.set_opts(size=v))
@@ -264,14 +262,14 @@ class MainWindow(QMainWindow):
         nh = QHBoxLayout(nav)
         nh.setContentsMargins(0, 0, 0, 0)
         nh.setSpacing(4)
-        nh.addWidget(QLabel("第"))
+        nh.addWidget(QLabel(tr("第")))
         self.page_spin = QSpinBox()
         self.page_spin.setRange(1, 1)
         self.page_spin.setFixedWidth(70)
         self.page_spin.setKeyboardTracking(False)
         self.page_spin.valueChanged.connect(lambda v: self.view.goto_page(v - 1))
         nh.addWidget(self.page_spin)
-        self.lbl_pages = QLabel("/ 0 页")
+        self.lbl_pages = QLabel(tr("/ 0 页"))
         nh.addWidget(self.lbl_pages)
         sb.addPermanentWidget(nav)
         self.lbl_size = QLabel("")
@@ -280,8 +278,8 @@ class MainWindow(QMainWindow):
         zh = QHBoxLayout(zw)
         zh.setContentsMargins(0, 0, 6, 0)
         zh.setSpacing(2)
-        for key, ic, tip, fn in (("zoomout", "zoomout", "缩小", lambda: self.view.set_zoom(self.view.zoom / 1.2)),
-                                 ("zoomin", "zoomin", "放大", lambda: self.view.set_zoom(self.view.zoom * 1.2))):
+        for key, ic, tip, fn in (("zoomout", "zoomout", tr("缩小"), lambda: self.view.set_zoom(self.view.zoom / 1.2)),
+                                 ("zoomin", "zoomin", tr("放大"), lambda: self.view.set_zoom(self.view.zoom * 1.2))):
             b = QToolButton()
             b.setIcon(icon(ic, "#e8ebf3", 18))
             b.setToolTip(tip)
@@ -291,7 +289,7 @@ class MainWindow(QMainWindow):
         self.zoom_box = QComboBox()
         self.zoom_box.setEditable(True)
         self.zoom_box.setFixedWidth(96)
-        for z in ("适合宽度", "整页", "50%", "75%", "100%", "125%", "150%", "200%", "300%", "400%"):
+        for z in (tr("适合宽度"), tr("整页"), "50%", "75%", "100%", "125%", "150%", "200%", "300%", "400%"):
             self.zoom_box.addItem(z)
         self.zoom_box.setInsertPolicy(QComboBox.NoInsert)
         self.zoom_box.activated.connect(lambda *_: self._zoom_picked())
@@ -331,20 +329,20 @@ class MainWindow(QMainWindow):
             self.page_spin.setRange(1, n)
             self.page_spin.setValue(self.view.current_page() + 1)
             self.page_spin.blockSignals(False)
-            self.lbl_pages.setText(f"/ {n} 页")
+            self.lbl_pages.setText(tr("/ {n} 页", n=n))
             sel = len(self.thumbs.selected())
-            self.side_title.setText(f"页面　共 {n} 页" + (f" · 已选 {sel}" if sel > 1 else ""))
+            self.side_title.setText(tr("页面　共 {n} 页", n=n) + (tr(" · 已选 {n}", n=sel) if sel > 1 else ""))
             size = ""
             if self.dm.path and os.path.exists(self.dm.path):
                 size = common.human_size(os.path.getsize(self.dm.path))
-            self.lbl_size.setText(("已加密 · " if self.dm.encrypt else "") + size)
-            self.lbl_path.setText(common.elide(self.dm.path, 90) if self.dm.path else "尚未保存到文件")
-            self.setWindowTitle(f"{'● ' if self.dm.dirty else ''}{self.dm.name} - {APP_NAME}")
+            self.lbl_size.setText((tr("已加密 · ") if self.dm.encrypt else "") + size)
+            self.lbl_path.setText(common.elide(self.dm.path, 90) if self.dm.path else tr("尚未保存到文件"))
+            self.setWindowTitle(f"{'● ' if self.dm.dirty else ''}{self.dm.name} - {tr(APP_NAME)}")
         else:
-            self.lbl_pages.setText("/ 0 页")
+            self.lbl_pages.setText(tr("/ 0 页"))
             self.lbl_size.setText("")
-            self.lbl_path.setText("全部在本机处理，文件不会上传")
-            self.setWindowTitle(f"{APP_NAME} {VERSION}")
+            self.lbl_path.setText(tr("全部在本机处理，文件不会上传"))
+            self.setWindowTitle(f"{tr(APP_NAME)} {VERSION}")
 
     def _page_changed(self, i):
         self.thumbs.set_current(i)
@@ -357,9 +355,9 @@ class MainWindow(QMainWindow):
 
     def _zoom_picked(self):
         t = self.zoom_box.currentText().strip()
-        if t == "适合宽度":
+        if t == tr("适合宽度"):
             self.view.fit_width()
-        elif t == "整页":
+        elif t == tr("整页"):
             self.view.fit_page()
         else:
             try:
@@ -405,7 +403,7 @@ class MainWindow(QMainWindow):
             w.setValue(v)
             w.blockSignals(False)
         self.font_box.blockSignals(True)
-        self.font_box.setCurrentText(o["font"])
+        common.pick_font(self.font_box, o["font"])
         self.font_box.blockSignals(False)
 
     def _color_changed(self, c):
@@ -421,15 +419,15 @@ class MainWindow(QMainWindow):
         if key:
             self.tool_acts[key].setChecked(True)
         self._sync_opts()
-        tips = {"text": "在页面上点击要加文字的位置", "edittext": "把鼠标移到文字上，出现蓝框后点击修改",
-                "highlight": "按住鼠标拖过要高亮的文字", "underline": "按住鼠标拖过要加下划线的文字",
-                "strike": "按住鼠标拖过要加删除线的文字", "erase": "框选要擦除的区域（内容会被真正删除并涂白）",
-                "redact": "框选要涂黑的区域（内容会被真正删除）", "pen": "按住鼠标自由涂画",
+        tips = {"text": tr("在页面上点击要加文字的位置"), "edittext": tr("把鼠标移到文字上，出现蓝框后点击修改"),
+                "highlight": tr("按住鼠标拖过要高亮的文字"), "underline": tr("按住鼠标拖过要加下划线的文字"),
+                "strike": tr("按住鼠标拖过要加删除线的文字"), "erase": tr("框选要擦除的区域（内容会被真正删除并涂白）"),
+                "redact": tr("框选要涂黑的区域（内容会被真正删除）"), "pen": tr("按住鼠标自由涂画"),
                 "select": ""}
         if name in tips:
             self._hint(tips[name])
         elif name in ("line", "arrow", "rect", "ellipse"):
-            self._hint("按住鼠标拖动绘制；按住 Shift 可画水平线 / 正方形 / 正圆")
+            self._hint(tr("按住鼠标拖动绘制；按住 Shift 可画水平线 / 正方形 / 正圆"))
 
     _placing = "image"
 
@@ -454,12 +452,12 @@ class MainWindow(QMainWindow):
         self.tool_acts[self.view.tool if self.view.tool in self.tool_acts else "select"].setChecked(True)
 
     def _place_image(self):
-        f = common.pick_open(self, "选择要插入的图片", self.cfg.get("last_dir", ""), common.IMG_FILTER)
+        f = common.pick_open(self, tr("选择要插入的图片"), self.cfg.get("last_dir", ""), common.IMG_FILTER)
         if not f:
             return self._back_to_select()
         img = QImage(f)
         if img.isNull():
-            common.warn(self, "无法读取这张图片。")
+            common.warn(self, tr("无法读取这张图片。"))
             return self._back_to_select()
         self.cfg["last_dir"] = os.path.dirname(f)
         if os.path.splitext(f)[1].lower() in (".png", ".jpg", ".jpeg"):
@@ -481,7 +479,7 @@ class MainWindow(QMainWindow):
     def use_signature(self, path):
         img = QImage(path)
         if img.isNull():
-            return common.warn(self, "无法读取这个签名。")
+            return common.warn(self, tr("无法读取这个签名。"))
         with open(path, "rb") as fh:
             data = fh.read()
         self._placing = "sign"
@@ -491,7 +489,7 @@ class MainWindow(QMainWindow):
         dlg = dialogs.ReplaceTextDialog(self, line)
         if dlg.exec():
             p = dlg.params()
-            self.edit("修改文字", lambda d: pdfops.replace_text(d[index], line, **p), {index})
+            self.edit(tr("修改文字"), lambda d: pdfops.replace_text(d[index], line, **p), {index})
 
     # ------------------------------------------------------------ files
     def _home_action(self, key):
@@ -509,24 +507,24 @@ class MainWindow(QMainWindow):
                 self.set_doc(Doc.blank())
 
     def open_dialog(self):
-        f = common.pick_open(self, "打开 PDF 或图片", self.cfg.get("last_dir", ""), common.ANY_FILTER)
+        f = common.pick_open(self, tr("打开 PDF 或图片"), self.cfg.get("last_dir", ""), common.ANY_FILTER)
         return bool(f) and self.open_file(f)
 
     def open_file(self, path):
         if not os.path.exists(path):
-            common.warn(self, f"找不到文件：\n{path}")
+            common.warn(self, tr("找不到文件：\n{path}", path=path))
             return False
         if not self.maybe_save():
             return False
         try:
             dm = common.open_with_password(self, path, Doc.open)
         except Exception as exc:
-            common.error(self, "打开文件", exc)
+            common.error(self, tr("打开文件"), exc)
             return False
         if dm is None:
             return False
         if dm.n == 0:
-            common.warn(self, "这个文件里没有页面。")
+            common.warn(self, tr("这个文件里没有页面。"))
             return False
         self.set_doc(dm)
         if dm.path:
@@ -561,7 +559,7 @@ class MainWindow(QMainWindow):
             return False
         if not self.dm.dirty:
             return True
-        r = common.ask_save(self, f"“{self.dm.name}” 有尚未保存的修改，要保存吗？")
+        r = common.ask_save(self, tr("“{name}” 有尚未保存的修改，要保存吗？", name=self.dm.name))
         if r == "cancel":
             return False
         return self.save() if r == "save" else True
@@ -581,7 +579,7 @@ class MainWindow(QMainWindow):
         if self.dm is None or not self.view.commit_float():
             return False
         start = self.dm.path or getattr(self.dm, "suggest", None) or os.path.join(self.cfg.get("last_dir", ""), self.dm.name)
-        f = common.pick_save(self, "另存为", start)
+        f = common.pick_save(self, tr("另存为"), start)
         if not f:
             return False
         if not f.lower().endswith(".pdf"):
@@ -592,10 +590,10 @@ class MainWindow(QMainWindow):
         try:
             self.dm.save(path)
         except Exception as exc:
-            common.error(self, "保存", exc)
+            common.error(self, tr("保存"), exc)
             return False
         config.add_recent(self.cfg, path)
-        self._hint(f"已保存：{path}")
+        self._hint(tr("已保存：{path}", path=path))
         self._update_ui()
         return True
 
@@ -616,9 +614,9 @@ class MainWindow(QMainWindow):
         dpi = min(printer.resolution(), 300)
         p = QPainter()
         if not p.begin(printer):
-            return common.warn(self, "无法开始打印。")
+            return common.warn(self, tr("无法开始打印。"))
         try:
-            with Progress(self, "正在打印…") as prog:
+            with Progress(self, tr("正在打印…")) as prog:
                 for k, i in enumerate(range(first - 1, last)):
                     if not prog.step(k, last - first + 1):
                         break
@@ -636,35 +634,36 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------ pages
     def rotate(self, delta):
         t = self.targets()
-        self.edit("旋转页面", lambda d: pdfops.rotate(d, t, delta), set(t), t)
+        self.edit(tr("旋转页面"), lambda d: pdfops.rotate(d, t, delta), set(t), t)
 
     def delete_pages(self):
         if self.dm is None:
             return
         t = self.targets()
         if len(t) >= self.dm.n:
-            return common.warn(self, "不能删除全部页面，至少要保留一页。")
-        if len(t) > 1 and not common.ask(self, f"删除选中的 {len(t)} 页？（可以撤销）"):
+            return common.warn(self, tr("不能删除全部页面，至少要保留一页。"))
+        if len(t) > 1 and not common.ask(self, tr("删除选中的 {n} 页？（可以撤销）", n=len(t))):
             return
-        self.edit("删除页面", lambda d: pdfops.delete(d, t), None, [])
+        self.edit(tr("删除页面"), lambda d: pdfops.delete(d, t), None, [])
 
     def extract_pages(self):
         if not self.view.commit_float():
             return
         t = self.targets()
         base = self.dm.path or os.path.join(self.cfg.get("last_dir", ""), self.dm.name)
-        default = f"{os.path.splitext(base)[0]}_第{pdfops.safe_name(_ranges_text(t), 30)}页.pdf"
-        f = common.pick_save(self, f"把 {len(t)} 页另存为", default)
+        default = tr("{stem}_第{pages}页.pdf", stem=os.path.splitext(base)[0],
+                     pages=pdfops.safe_name(_ranges_text(t), 30))
+        f = common.pick_save(self, tr("把 {n} 页另存为", n=len(t)), default)
         if not f:
             return
         try:
             pdfops.extract(self.dm.doc, t, f if f.lower().endswith(".pdf") else f + ".pdf")
         except Exception as exc:
-            return common.error(self, "提取页面", exc)
-        self._hint(f"已提取 {len(t)} 页到：{f}")
+            return common.error(self, tr("提取页面"), exc)
+        self._hint(tr("已提取 {n} 页到：{path}", n=len(t), path=f))
 
     def insert_file(self, at=None):
-        files = common.pick_open(self, "选择要插入的 PDF 或图片", self.cfg.get("last_dir", ""), common.ANY_FILTER, many=True)
+        files = common.pick_open(self, tr("选择要插入的 PDF 或图片"), self.cfg.get("last_dir", ""), common.ANY_FILTER, many=True)
         if not files:
             return
         self.cfg["last_dir"] = os.path.dirname(files[0])
@@ -682,7 +681,7 @@ class MainWindow(QMainWindow):
             try:
                 n = common.open_with_password(self, f, opener)
             except Exception as exc:
-                common.error(self, f"读取 {os.path.basename(f)} ", exc)
+                common.error(self, tr("读取 {name}", name=os.path.basename(f)), exc)
                 return
             if n is None:
                 return
@@ -693,24 +692,24 @@ class MainWindow(QMainWindow):
             pos = at
             for f, pw, _ in opened:
                 pos += pdfops.insert_file(d, f, pos, pw)
-        if self.edit("插入页面", run, None, list(range(at, at + total))):
+        if self.edit(tr("插入页面"), run, None, list(range(at, at + total))):
             self.view.goto_page(at)
-            self._hint(f"已在第 {at} 页之后插入 {total} 页")
+            self._hint(tr("已在第 {at} 页之后插入 {n} 页", at=at, n=total))
 
     def insert_blank(self, at=None):
         cur = self.view.current_page()
         at = (max(self.targets()) + 1) if at is None else at
         r = self.dm.doc[min(cur, self.dm.n - 1)].rect
-        if self.edit("插入空白页", lambda d: pdfops.insert_blank(d, at, r.width, r.height), None, [at]):
+        if self.edit(tr("插入空白页"), lambda d: pdfops.insert_blank(d, at, r.width, r.height), None, [at]):
             self.view.goto_page(at)
 
     def _reorder(self, order):
         cur = self.view.current_page()
         was = set(self.thumbs.selected())
         sel = [new for new, old in enumerate(order) if old in was]
-        if not self.edit("调整页面顺序", lambda d: pdfops.reorder(d, order), None, sel):
+        if not self.edit(tr("调整页面顺序"), lambda d: pdfops.reorder(d, order), None, sel):
             return
-        self._hint("页面顺序已调整（Ctrl+Z 可撤销）")
+        self._hint(tr("页面顺序已调整（Ctrl+Z 可撤销）"))
         if cur in order:
             self.view.goto_page(order.index(cur))
 
@@ -719,28 +718,28 @@ class MainWindow(QMainWindow):
             return
         t = self.targets()
         m = QMenu(self)
-        title = m.addAction(f"第 {_ranges_text(t)} 页" if len(t) <= 6 else f"已选 {len(t)} 页")
+        title = m.addAction(tr("第 {pages} 页", pages=_ranges_text(t)) if len(t) <= 6 else tr("已选 {n} 页", n=len(t)))
         title.setEnabled(False)
         m.addSeparator()
         for key in ("rot_l", "rot_r", "delete", "extract"):
             a = m.addAction(icon(*{"rot_l": ("rotate", "#3a4257"), "rot_r": ("rotate", "#3a4257"),
                                    "delete": ("delete", "#c62828"), "extract": ("extract", "#3a4257")}[key],
                                  mirror=(key == "rot_l")),
-                            {"rot_l": "向左旋转 90°", "rot_r": "向右旋转 90°", "delete": "删除", "extract": "提取为新文件…"}[key])
+                            {"rot_l": tr("向左旋转 90°"), "rot_r": tr("向右旋转 90°"), "delete": tr("删除"), "extract": tr("提取为新文件…")}[key])
             a.triggered.connect(lambda _=False, k=key: self.acts[k].trigger())
             a.setEnabled(self.acts[key].isEnabled())
         m.addSeparator()
         first, last = min(t), max(t)
-        m.addAction("在前面插入文件…").triggered.connect(lambda: self.insert_file(first))
-        m.addAction("在后面插入文件…").triggered.connect(lambda: self.insert_file(last + 1))
-        m.addAction("在前面插入空白页").triggered.connect(lambda: self.insert_blank(first))
-        m.addAction("在后面插入空白页").triggered.connect(lambda: self.insert_blank(last + 1))
+        m.addAction(tr("在前面插入文件…")).triggered.connect(lambda: self.insert_file(first))
+        m.addAction(tr("在后面插入文件…")).triggered.connect(lambda: self.insert_file(last + 1))
+        m.addAction(tr("在前面插入空白页")).triggered.connect(lambda: self.insert_blank(first))
+        m.addAction(tr("在后面插入空白页")).triggered.connect(lambda: self.insert_blank(last + 1))
         m.addSeparator()
-        m.addAction("移到最前").triggered.connect(lambda: self._move_to(t, 0))
-        m.addAction("移到最后").triggered.connect(lambda: self._move_to(t, self.dm.n))
+        m.addAction(tr("移到最前")).triggered.connect(lambda: self._move_to(t, 0))
+        m.addAction(tr("移到最后")).triggered.connect(lambda: self._move_to(t, self.dm.n))
         m.addSeparator()
-        m.addAction("导出为图片…").triggered.connect(self.export_images)
-        m.addAction("全选").triggered.connect(self.thumbs.selectAll)
+        m.addAction(tr("导出为图片…")).triggered.connect(self.export_images)
+        m.addAction(tr("全选")).triggered.connect(self.thumbs.selectAll)
         m.exec(gpos)
 
     def _move_to(self, t, where):
@@ -749,7 +748,7 @@ class MainWindow(QMainWindow):
         if order == list(range(self.dm.n)):
             return
         start = 0 if where == 0 else len(rest)
-        if self.edit("移动页面", lambda d: pdfops.reorder(d, order), None, list(range(start, start + len(t)))):
+        if self.edit(tr("移动页面"), lambda d: pdfops.reorder(d, order), None, list(range(start, start + len(t)))):
             self.view.goto_page(start)
 
     # ------------------------------------------------------------ whole-document tools
@@ -786,7 +785,7 @@ class MainWindow(QMainWindow):
         dlg = dialogs.WatermarkDialog(self, *self._pages_args())
         if dlg.exec():
             p = dlg.params()
-            self.edit("添加水印", lambda d: pdfops.watermark(d, dlg.idx, **p), set(dlg.idx))
+            self.edit(tr("添加水印"), lambda d: pdfops.watermark(d, dlg.idx, **p), set(dlg.idx))
 
     def page_numbers(self):
         if not self.view.commit_float():
@@ -794,7 +793,7 @@ class MainWindow(QMainWindow):
         dlg = dialogs.PageNumberDialog(self, *self._pages_args())
         if dlg.exec():
             p = dlg.params()
-            self.edit("添加页码", lambda d: pdfops.page_numbers(d, dlg.idx, **p), set(dlg.idx))
+            self.edit(tr("添加页码"), lambda d: pdfops.page_numbers(d, dlg.idx, **p), set(dlg.idx))
 
     def encrypt(self):
         if not self.view.commit_float():
@@ -805,8 +804,8 @@ class MainWindow(QMainWindow):
         self.dm.encrypt = dlg.result
         self.dm.dirty = True
         self._update_ui()
-        what = "已设置密码" if dlg.result else "已移除密码"
-        if common.ask(self, f"{what}，保存文件后生效。\n现在保存吗？"):
+        if common.ask(self, tr("已设置密码，保存文件后生效。\n现在保存吗？") if dlg.result
+                      else tr("已移除密码，保存文件后生效。\n现在保存吗？")):
             self.save()
 
     def compress(self):
@@ -815,25 +814,25 @@ class MainWindow(QMainWindow):
         base = self.dm.path or os.path.join(self.cfg.get("last_dir", ""), self.dm.name)
         data = self.dm.bytes()
         now = os.path.getsize(self.dm.path) if self.dm.path and os.path.exists(self.dm.path) and not self.dm.dirty else len(data)
-        dlg = dialogs.CompressDialog(self, os.path.splitext(base)[0] + "_压缩.pdf", now)
+        dlg = dialogs.CompressDialog(self, os.path.splitext(base)[0] + tr("_压缩.pdf"), now)
         if not dlg.exec():
             return
         out = dlg.out.text().strip()
         if not out.lower().endswith(".pdf"):
             out += ".pdf"
         if self.dm.path and os.path.normcase(os.path.abspath(out)) == os.path.normcase(self.dm.path):
-            return common.warn(self, "请保存为另一个文件名，不要覆盖当前文档。")
+            return common.warn(self, tr("请保存为另一个文件名，不要覆盖当前文档。"))
         self.setCursor(Qt.WaitCursor)
         try:
             size = pdfops.compress(data, out, dlg.level())
         except Exception as exc:
-            return common.error(self, "压缩", exc)
+            return common.error(self, tr("压缩"), exc)
         finally:
             self.unsetCursor()
         pct = (1 - size / now) * 100 if now else 0
-        msg = f"压缩完成：{common.human_size(now)} → {common.human_size(size)}"
-        msg += f"（减小 {pct:.0f}%）" if pct >= 1 else "（这个文件已经很紧凑，几乎没有可压缩的空间）"
-        if common.ask(self, f"{msg}\n{out}\n\n打开所在文件夹吗？"):
+        msg = tr("压缩完成：{before} → {after}", before=common.human_size(now), after=common.human_size(size))
+        msg += tr("（减小 {pct}%）", pct=f"{pct:.0f}") if pct >= 1 else tr("（这个文件已经很紧凑，几乎没有可压缩的空间）")
+        if common.ask(self, msg + "\n" + out + "\n\n" + tr("打开所在文件夹吗？")):
             dialogs.open_folder(os.path.dirname(out))
 
     def export_images(self):
@@ -841,26 +840,26 @@ class MainWindow(QMainWindow):
             return
         base = self.dm.path or os.path.join(self.cfg.get("last_dir", ""), self.dm.name)
         stem = os.path.splitext(os.path.basename(base))[0]
-        dlg = dialogs.ExportImagesDialog(self, *self._pages_args(), os.path.join(os.path.dirname(base), stem + "_图片"))
+        dlg = dialogs.ExportImagesDialog(self, *self._pages_args(), os.path.join(os.path.dirname(base), stem + tr("_图片")))
         if not dlg.exec():
             return
         folder = dlg.folder.text().strip()
         try:
-            with Progress(self, "正在导出图片…") as p:
+            with Progress(self, tr("正在导出图片…")) as p:
                 files = pdfops.export_images(self.dm.doc, dlg.idx, folder, stem, dlg.dpi.currentData(),
                                              dlg.fmt.currentData(), p.step)
         except InterruptedError:
             return
         except Exception as exc:
-            return common.error(self, "导出图片", exc)
-        if common.ask(self, f"已导出 {len(files)} 张图片。\n{folder}\n\n打开这个文件夹吗？"):
+            return common.error(self, tr("导出图片"), exc)
+        if common.ask(self, tr("已导出 {n} 张图片。\n{folder}\n\n打开这个文件夹吗？", n=len(files), folder=folder)):
             dialogs.open_folder(folder)
 
     def export_text(self):
         if not self.view.commit_float():
             return
         base = self.dm.path or os.path.join(self.cfg.get("last_dir", ""), self.dm.name)
-        f = common.pick_save(self, "导出文字", os.path.splitext(base)[0] + ".txt", "文本文件 (*.txt)")
+        f = common.pick_save(self, tr("导出文字"), os.path.splitext(base)[0] + ".txt", tr("文本文件 (*.txt)"))
         if not f:
             return
         try:
@@ -868,14 +867,64 @@ class MainWindow(QMainWindow):
             with open(f, "w", encoding="utf-8-sig") as fh:
                 fh.write(text)
         except Exception as exc:
-            return common.error(self, "导出文字", exc)
+            return common.error(self, tr("导出文字"), exc)
         if not any(l.strip() and not l.startswith("=====") for l in text.splitlines()):
-            common.info(self, "已导出，但这个文件里没有可提取的文字（可能是扫描件）。")
+            common.info(self, tr("已导出，但这个文件里没有可提取的文字（可能是扫描件）。"))
         else:
-            self._hint(f"文字已导出：{f}")
+            self._hint(tr("文字已导出：{path}", path=f))
 
     def show_help(self):
-        common.info(self, HELP.format(name=APP_NAME, ver=VERSION))
+        common.info(self, HELP[i18n.lang()].format(name=tr(APP_NAME), ver=VERSION))
+
+    # ------------------------------------------------------------ settings
+    def show_settings(self):
+        if self.dm is not None and not self.view.commit_float():
+            return
+        dlg = SettingsDialog(self, i18n.lang())
+        if dlg.exec() and dlg.lang() != i18n.lang():
+            self.switch_language(dlg.lang())
+
+    def _keep_opts(self):
+        o = self.view.opts
+        self.cfg.update(color=o["color"], text_color=o["text_color"], line_width=o["width"],
+                        font=o["font"], font_size=o["size"])
+
+    def switch_language(self, lang):
+        """Rebuild the window in the other language. The open document, its undo steps, the page and
+        the zoom stay as they are. -> the new window."""
+        if self.dm is not None and not self.view.commit_float():
+            return self
+        self._keep_opts()
+        self.cfg["lang"] = lang
+        config.save(self.cfg)
+        i18n.set_lang(lang)
+        common.apply_language(QApplication.instance())
+        dm, page, zoom, sel = self.dm, 0, 1.0, []
+        if dm is not None:
+            page, zoom, sel = self.view.current_page(), self.view.zoom, self.thumbs.selected()
+            self.dm = None                  # handed over: this window must not close it
+            self.view.set_doc(None)
+            self.thumbs.set_doc(None)
+        new = MainWindow(self.cfg)
+        if self.testAttribute(Qt.WA_DontShowOnScreen):      # the tests run their windows off screen
+            new.setAttribute(Qt.WA_DontShowOnScreen)
+        if self.isMaximized():
+            new.showMaximized()
+        else:
+            new.setGeometry(self.geometry())
+            new.show()
+        if dm is not None:
+            new.set_doc(dm)
+            new.view.set_zoom(zoom)
+            new.view.goto_page(page)
+            new._zoom_changed(new.view.zoom)
+            if sel:
+                new.thumbs.reload(None, sel)
+            new._update_ui()
+        self.hide()
+        self.close()
+        self.deleteLater()
+        return new
 
     # ------------------------------------------------------------ window events
     def dragEnterEvent(self, e):
@@ -899,9 +948,7 @@ class MainWindow(QMainWindow):
     def closeEvent(self, e):
         if not self.maybe_save():
             return e.ignore()
-        o = self.view.opts
-        self.cfg.update(color=o["color"], text_color=o["text_color"], line_width=o["width"],
-                        font=o["font"], font_size=o["size"])
+        self._keep_opts()
         config.save(self.cfg)
         e.accept()
 

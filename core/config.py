@@ -42,6 +42,7 @@ DEFAULTS = {
     "text_color": "#000000",
     "line_width": 1.5,
     "sig_width": 140,
+    "lang": "",              # "zh" / "en"; empty = follow Windows
 }
 
 

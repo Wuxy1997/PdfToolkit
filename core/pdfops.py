@@ -12,6 +12,7 @@ import pymupdf
 from pymupdf import Matrix, Point, Rect
 
 from . import fonts
+from .i18n import tr
 
 IMAGE_EXT = (".png", ".jpg", ".jpeg", ".bmp", ".gif", ".tif", ".tiff", ".webp")
 A4 = (595.0, 842.0)
@@ -139,7 +140,7 @@ def rotate(doc, indexes, delta):
 
 def delete(doc, indexes):
     if len(set(indexes)) >= doc.page_count:
-        raise ValueError("不能删除全部页面")
+        raise ValueError(tr("不能删除全部页面"))
     doc.delete_pages(sorted(set(indexes)))
 
 
@@ -197,7 +198,7 @@ def merge(items, out_path, bookmarks=True, image_page="image", progress=None):
             finally:
                 src.close()
         if out.page_count == 0:
-            raise ValueError("没有可合并的页面")
+            raise ValueError(tr("没有可合并的页面"))
         if toc:
             try:
                 out.set_toc(_fix_toc(toc))
@@ -221,7 +222,7 @@ def _fix_toc(toc):
 
 def safe_name(text, limit=60):
     text = re.sub(r'[\\/:*?"<>|\r\n\t]+', " ", text).strip(" .")
-    return text[:limit] or "未命名"
+    return text[:limit] or tr("未命名")
 
 
 def groups_every(n_pages, size):
@@ -243,7 +244,7 @@ def groups_bookmarks(doc):
         return []
     out = []
     if starts[0][1] > 0:
-        out.append(("前置页", list(range(0, starts[0][1]))))
+        out.append((tr("前置页"), list(range(0, starts[0][1]))))
     for k, (t, p) in enumerate(starts):
         end = starts[k + 1][1] if k + 1 < len(starts) else doc.page_count
         out.append((t, list(range(p, end))))
@@ -263,11 +264,11 @@ def split(doc, groups, folder, stem, names=None, progress=None):
         if names:
             label = f"{str(k + 1).zfill(width)}_{safe_name(names[k])}"
         elif len(idx) == 1:
-            label = f"第{idx[0] + 1}页"
+            label = tr("第{n}页", n=idx[0] + 1)
         elif idx == list(range(idx[0], idx[-1] + 1)):
-            label = f"第{idx[0] + 1}-{idx[-1] + 1}页"
+            label = tr("第{a}-{b}页", a=idx[0] + 1, b=idx[-1] + 1)
         else:
-            label = f"部分{str(k + 1).zfill(width)}"
+            label = tr("部分{n}", n=str(k + 1).zfill(width))
         name, n = f"{stem}_{label}", 2
         while name.lower() in used:
             name = f"{stem}_{label}_{n}"
@@ -658,5 +659,5 @@ def extract_text(doc, indexes=None):
     idx = range(doc.page_count) if indexes is None else indexes
     parts = []
     for i in idx:
-        parts.append(f"===== 第 {i + 1} 页 =====\n{doc[i].get_text().strip()}\n")
+        parts.append("===== " + tr("第 {n} 页", n=i + 1) + f" =====\n{doc[i].get_text().strip()}\n")
     return "\n".join(parts)
